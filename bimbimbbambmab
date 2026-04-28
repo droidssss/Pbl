@@ -135,7 +135,7 @@ local function buildUI()
     local lTitle = Instance.new("TextLabel", loader)
     lTitle.Size = UDim2.new(1, 0, 0, 60)
     lTitle.Position = UDim2.new(0, 0, 0, 30)
-    lTitle.Text = "MONKKS V5 ELITE"
+    lTitle.Text = "MONKKS TITAN V5"
     lTitle.Font = Enum.Font.GothamBold
     lTitle.TextColor3 = THEME.Text
     lTitle.TextSize = 28
