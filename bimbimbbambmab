@@ -7,8 +7,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local uiCreated = false
-local espHighlights = {}
-local playerEspLabels = {}
 local menuOpen = true
 local keybindAwaitingInput = nil
 local uiElements = {}
@@ -20,7 +18,7 @@ local flags = {
         range = 50,
         autoSwing = false,
         swingSpeed = 0.1,
-        hitEffect = true,
+        hitEffect = false,
         godMode = false,
         hitboxExpand = false,
         expandSize = 2
@@ -44,11 +42,10 @@ local flags = {
     },
     player = {
         playerEsp = false,
-        showDistance = true,
-        showHealth = true,
-        showNames = true,
-        aimbot = false,
-        aimbotFov = 50
+        showDistance = false,
+        showHealth = false,
+        showNames = false,
+        aimbot = false
     },
     visuals = {
         esp = false,
@@ -65,24 +62,26 @@ local flags = {
         fpsCounter = true,
         coords = true,
         antiLag = false,
-        soundMute = false
+        soundMute = false,
+        antiAfk = false
     }
 }
 
 local keybinds = {
-    combatEnabled = Enum.KeyCode.C,
-    autoSwing = Enum.KeyCode.X,
-    autoFish = Enum.KeyCode.F,
-    speedEnabled = Enum.KeyCode.V,
-    flight = Enum.KeyCode.Z,
-    noclip = Enum.KeyCode.N,
-    infJump = Enum.KeyCode.J,
-    autoClick = Enum.KeyCode.M,
-    playerEsp = Enum.KeyCode.E,
-    esp = Enum.KeyCode.G,
-    godMode = Enum.KeyCode.H,
-    wallWalk = Enum.KeyCode.W,
-    aimbot = Enum.KeyCode.A
+    combatEnabled = nil,
+    autoSwing = nil,
+    autoFish = nil,
+    speedEnabled = nil,
+    flight = nil,
+    noclip = nil,
+    infJump = nil,
+    autoClick = nil,
+    playerEsp = nil,
+    esp = nil,
+    godMode = nil,
+    wallWalk = nil,
+    aimbot = nil,
+    hitboxExpand = nil
 }
 
 local THEME = {
@@ -162,7 +161,7 @@ local function buildUI()
     barFill.BackgroundColor3 = THEME.Accent
     Instance.new("UICorner", barFill)
 
-    local loadingSteps = {"Loading Kill Aura System...", "Initializing Auto-Farm...", "Hooking Remotes...", "Setting up Movement...", "Injecting Fishing Script...", "Loading Player Manager...", "Ready!"}
+    local loadingSteps = {"Loading Kill Aura System...", "Initializing Auto-Farm...", "Hooking Remotes...", "Setting up Movement...", "Injecting Fishing Script...", "Setting Up Ui...", "Ready!"}
 
     task.spawn(function()
         for i, status in ipairs(loadingSteps) do
@@ -199,13 +198,13 @@ local function buildUI()
     
     local openStroke = Instance.new("UIStroke", openBtn)
     openStroke.Color = THEME.Accent
-    openStroke.Thickness = 1.5
+    openStroke.Thickness = 0.3
 
     openBtn.MouseEnter:Connect(function()
-        TweenService:Create(openStroke, TweenInfo.new(0.3), {Thickness = 3, Color = Color3.new(1,1,1)}):Play()
+        TweenService:Create(openStroke, TweenInfo.new(0.3), {Thickness = 0.4, Color = Color3.new(1,1,1)}):Play()
     end)
     openBtn.MouseLeave:Connect(function()
-        TweenService:Create(openStroke, TweenInfo.new(0.3), {Thickness = 1.5, Color = THEME.Accent}):Play()
+        TweenService:Create(openStroke, TweenInfo.new(0.3), {Thickness = 0.4, Color = THEME.Accent}):Play()
     end)
 
     local function toggleMenu(visible)
@@ -308,8 +307,8 @@ local function buildUI()
     Instance.new("UIPadding", side).PaddingTop = UDim.new(0, 10)
 
     local content = Instance.new("Frame", main)
-    content.Size = UDim2.new(1, -180, 1, -50)
-    content.Position = UDim2.new(0, 180, 0, 50)
+    content.Size = UDim2.new(1, -190, 1, -50)
+    content.Position = UDim2.new(0, 190, 0, 50)
     content.BackgroundTransparency = 1
 
     local activeTab = nil
@@ -369,7 +368,7 @@ local function buildUI()
     end
 
     -- Toggle with Keybind
-    local function addToggleWithKeybind(p, text, tbl, key, keybindKey)
+    local function addToggleWithKeybind(p, text, tbl, key, keybindName)
         local f = Instance.new("Frame", p)
         f.Size = UDim2.new(1, 0, 0, 60)
         f.BackgroundColor3 = THEME.ElementBg
@@ -416,13 +415,13 @@ local function buildUI()
         keybindBtn.TextColor3 = THEME.Accent
         keybindBtn.Font = Enum.Font.GothamBold
         keybindBtn.TextSize = 9
-        keybindBtn.Text = "Key: " .. tostring(keybindKey):match("KeyCode%.(.+)")
+        keybindBtn.Text = keybinds[keybindName] and ("Key: " .. tostring(keybinds[keybindName]):match("KeyCode%.(.+)")) or "Key: None"
         Instance.new("UICorner", keybindBtn).CornerRadius = UDim.new(0, 4)
 
         keybindBtn.MouseButton1Click:Connect(function()
             keybindBtn.Text = "Press Key..."
             keybindBtn.TextColor3 = THEME.Yellow
-            keybindAwaitingInput = {keyName = keybindKey, btn = keybindBtn}
+            keybindAwaitingInput = {keyName = keybindName, btn = keybindBtn}
         end)
 
         -- Store UI element for updating
@@ -478,50 +477,101 @@ local function buildUI()
     local utilP = createTab("UTILITY")
 
     -- COMBAT TAB
-    addToggleWithKeybind(combatP, "Kill Aura", flags.combat, "enabled", keybinds.combatEnabled)
+    addToggleWithKeybind(combatP, "Kill Aura", flags.combat, "enabled", "combatEnabled")
     addInputWithLabel(combatP, "Range", flags.combat, "range", 10, 200)
-    addToggleWithKeybind(combatP, "Auto Swing", flags.combat, "autoSwing", keybinds.autoSwing)
+    addToggleWithKeybind(combatP, "Auto Swing", flags.combat, "autoSwing", "autoSwing")
     addInputWithLabel(combatP, "Swing Speed", flags.combat, "swingSpeed", 0.05, 1)
-    addToggleWithKeybind(combatP, "God Mode", flags.combat, "godMode", keybinds.godMode)
-    addToggleWithKeybind(combatP, "Hitbox Expand", flags.combat, "hitboxExpand", keybinds.autoSwing)
-    addInputWithLabel(combatP, "Expand Size", flags.combat, "expandSize", 1, 10)
+    addToggleWithKeybind(combatP, "God Mode", flags.combat, "godMode", "godMode")
+    addToggleWithKeybind(combatP, "Hitbox Expand", flags.combat, "hitboxExpand", "hitboxExpand")
+    addInputWithLabel(combatP, "Expand Size", flags.combat, "expandSize", -10, 10)
 
     -- FARMING TAB
-    addToggleWithKeybind(farmingP, "Auto-Fish", flags.farming, "autoFish", keybinds.autoFish)
+    addToggleWithKeybind(farmingP, "Auto-Fish", flags.farming, "autoFish", "autoFish")
     addInputWithLabel(farmingP, "Fish Delay", flags.farming, "fishDelay", 0.1, 5)
-    addToggleWithKeybind(farmingP, "Auto Pickup", flags.farming, "autoPickup", keybinds.autoFish)
+    addToggleWithKeybind(farmingP, "Auto Pickup", flags.farming, "autoPickup", "autoFish")
     addInputWithLabel(farmingP, "Pickup Range", flags.farming, "pickupRange", 10, 200)
 
     -- MOVEMENT TAB
-    addToggleWithKeybind(moveP, "Speed Hack", flags.movement, "speedEnabled", keybinds.speedEnabled)
+    addToggleWithKeybind(moveP, "Speed Hack", flags.movement, "speedEnabled", "speedEnabled")
     addInputWithLabel(moveP, "Speed Value", flags.movement, "speed", 10, 300)
-    addToggleWithKeybind(moveP, "Flight", flags.movement, "fly", keybinds.flight)
+    addToggleWithKeybind(moveP, "Flight", flags.movement, "fly", "flight")
     addInputWithLabel(moveP, "Fly Speed", flags.movement, "flySpeed", 10, 300)
-    addToggleWithKeybind(moveP, "Noclip", flags.movement, "noclip", keybinds.noclip)
-    addToggleWithKeybind(moveP, "Wall Walk", flags.movement, "wallWalk", keybinds.wallWalk)
-    addToggleWithKeybind(moveP, "Infinite Jump", flags.movement, "infJump", keybinds.infJump)
+    addToggleWithKeybind(moveP, "Noclip", flags.movement, "noclip", "noclip")
+    addToggleWithKeybind(moveP, "Wall Walk", flags.movement, "wallWalk", "wallWalk")
+    addToggleWithKeybind(moveP, "Infinite Jump", flags.movement, "infJump", "infJump")
+    
+    -- Teleport to Player
+    local teleportFrame = Instance.new("Frame", moveP)
+    teleportFrame.Size = UDim2.new(1, 0, 0, 50)
+    teleportFrame.BackgroundColor3 = THEME.ElementBg
+    Instance.new("UICorner", teleportFrame)
+    
+    local teleportLabel = Instance.new("TextLabel", teleportFrame)
+    teleportLabel.Size = UDim2.new(0.5, 0, 0, 25)
+    teleportLabel.Position = UDim2.new(0, 15, 0, 5)
+    teleportLabel.Text = "TELEPORT TO PLAYER"
+    teleportLabel.TextColor3 = THEME.Text
+    teleportLabel.Font = Enum.Font.GothamBold
+    teleportLabel.TextSize = 10
+    teleportLabel.TextXAlignment = Enum.TextXAlignment.Left
+    teleportLabel.BackgroundTransparency = 1
+    
+    local teleportInput = Instance.new("TextBox", teleportFrame)
+    teleportInput.Size = UDim2.new(0, 100, 0, 28)
+    teleportInput.Position = UDim2.new(0, 15, 0, 32)
+    teleportInput.BackgroundColor3 = THEME.Side
+    teleportInput.Text = ""
+    teleportInput.PlaceholderText = "Player Name"
+    teleportInput.TextColor3 = THEME.Accent
+    teleportInput.Font = Enum.Font.GothamBold
+    teleportInput.TextSize = 12
+    Instance.new("UICorner", teleportInput)
+    
+    local teleportBtn = Instance.new("TextButton", teleportFrame)
+    teleportBtn.Size = UDim2.new(0, 80, 0, 28)
+    teleportBtn.Position = UDim2.new(1, -95, 0, 32)
+    teleportBtn.BackgroundColor3 = THEME.Accent
+    teleportBtn.Text = "TELEPORT"
+    teleportBtn.TextColor3 = Color3.new(0,0,0)
+    teleportBtn.Font = Enum.Font.GothamBold
+    teleportBtn.TextSize = 10
+    Instance.new("UICorner", teleportBtn)
+    
+    teleportBtn.MouseButton1Click:Connect(function()
+        local targetName = teleportInput.Text
+        if targetName ~= "" then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p.Name:lower() == targetName:lower() and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        player.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame
+                    end
+                    break
+                end
+            end
+        end
+    end)
 
     -- PLAYER TAB
-    addToggleWithKeybind(playerP, "Player ESP", flags.player, "playerEsp", keybinds.playerEsp)
-    addToggleWithKeybind(playerP, "Show Distance", flags.player, "showDistance", keybinds.playerEsp)
-    addToggleWithKeybind(playerP, "Show Health", flags.player, "showHealth", keybinds.playerEsp)
-    addToggleWithKeybind(playerP, "Show Names", flags.player, "showNames", keybinds.playerEsp)
-    addToggleWithKeybind(playerP, "Aimbot", flags.player, "aimbot", keybinds.aimbot)
-    addInputWithLabel(playerP, "Aimbot FOV", flags.player, "aimbotFov", 10, 180)
+    addToggleWithKeybind(playerP, "Player ESP", flags.player, "playerEsp", "playerEsp")
+    addToggleWithKeybind(playerP, "Show Distance", flags.player, "showDistance", "playerEsp")
+    addToggleWithKeybind(playerP, "Show Health", flags.player, "showHealth", "playerEsp")
+    addToggleWithKeybind(playerP, "Show Names", flags.player, "showNames", "playerEsp")
+    addToggleWithKeybind(playerP, "Aimbot", flags.player, "aimbot", "aimbot")
 
     -- VISUALS TAB
-    addToggleWithKeybind(visP, "Enemy ESP", flags.visuals, "esp", keybinds.esp)
-    addToggleWithKeybind(visP, "Wall Hack", flags.visuals, "wallHack", keybinds.esp)
-    addToggleWithKeybind(visP, "Hitboxes", flags.visuals, "hitboxes", keybinds.esp)
-    addToggleWithKeybind(visP, "Custom Sky", flags.visuals, "customSky", keybinds.esp)
+    addToggleWithKeybind(visP, "Enemy ESP", flags.visuals, "esp", "esp")
+    addToggleWithKeybind(visP, "Wall Hack", flags.visuals, "wallHack", "esp")
+    addToggleWithKeybind(visP, "Hitboxes", flags.visuals, "hitboxes", "esp")
+    addToggleWithKeybind(visP, "Custom Sky", flags.visuals, "customSky", "esp")
 
     -- UTILITY TAB
-    addToggleWithKeybind(utilP, "Auto Click", flags.utility, "autoClick", keybinds.autoClick)
+    addToggleWithKeybind(utilP, "Auto Click", flags.utility, "autoClick", "autoClick")
     addInputWithLabel(utilP, "Click Speed", flags.utility, "clickSpeed", 0.05, 2)
-    addToggleWithKeybind(utilP, "FPS Counter", flags.utility, "fpsCounter", keybinds.autoClick)
-    addToggleWithKeybind(utilP, "Coordinates", flags.utility, "coords", keybinds.autoClick)
-    addToggleWithKeybind(utilP, "Anti-Lag", flags.utility, "antiLag", keybinds.autoClick)
-    addToggleWithKeybind(utilP, "Mute Audio", flags.utility, "soundMute", keybinds.autoClick)
+    addToggleWithKeybind(utilP, "FPS Counter", flags.utility, "fpsCounter", "autoClick")
+    addToggleWithKeybind(utilP, "Coordinates", flags.utility, "coords", "autoClick")
+    addToggleWithKeybind(utilP, "Anti-Lag", flags.utility, "antiLag", "autoClick")
+    addToggleWithKeybind(utilP, "Mute Audio", flags.utility, "soundMute", "autoClick")
+    addToggleWithKeybind(utilP, "Anti-AFK", flags.utility, "antiAfk", "autoClick")
 
     -- Draggable
     local d, dS, sP
@@ -535,7 +585,7 @@ local function buildUI()
     -- UI Update System
     task.spawn(function()
         while uiCreated do
-            task.wait(0.05)
+            task.wait(2)
             for id, elem in pairs(uiElements) do
                 if elem.tbl and elem.key then
                     local isOn = elem.tbl[elem.key]
@@ -569,6 +619,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             flags.combat.enabled = not flags.combat.enabled
         elseif pressedKey == keybinds.autoSwing then
             flags.combat.autoSwing = not flags.combat.autoSwing
+        elseif pressedKey == keybinds.hitboxExpand then
+            flags.combat.hitboxExpand = not flags.combat.hitboxExpand
         elseif pressedKey == keybinds.autoFish then
             flags.farming.autoFish = not flags.farming.autoFish
         elseif pressedKey == keybinds.speedEnabled then
@@ -592,6 +644,15 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         elseif pressedKey == keybinds.aimbot then
             flags.player.aimbot = not flags.player.aimbot
         end
+        
+        -- Update UI elements after keybind toggle
+        for id, elem in pairs(uiElements) do
+            if elem.tbl and elem.key then
+                local isOn = elem.tbl[elem.key]
+                elem.track.BackgroundColor3 = isOn and THEME.SwitchOn or THEME.SwitchOff
+                TweenService:Create(elem.knob, TweenInfo.new(0.1), {Position = isOn and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)}):Play()
+            end
+        end
     end
 end)
 
@@ -600,14 +661,18 @@ end)
 -- Auto Fishing
 task.spawn(function()
     while true do
-        task.wait(math.max(0.1, flags.farming.fishDelay))
-        if flags.farming.autoFish and player.Character then
-            pcall(function()
-                local rems = getRemotes()
-                if rems and rems.fish then 
-                    rems.fish:FireServer(Vector3.zero, -1) 
-                end
-            end)
+        if flags.farming.autoFish then
+            task.wait(math.max(0.01, flags.farming.fishDelay))
+            if player.Character then
+                pcall(function()
+                    local rems = getRemotes()
+                    if rems and rems.fish then
+                        rems.fish:FireServer(Vector3.zero, -1)
+                    end
+                end)
+            end
+        else
+            task.wait(0.01)
         end
     end
 end)
@@ -616,8 +681,8 @@ end)
 task.spawn(function()
     local swingCooldown = 0
     while true do
-        task.wait(0.05)
         if flags.combat.enabled and player.Character then
+            task.wait(0.2)
             pcall(function()
                 local rems = getRemotes()
                 local hrp = player.Character:FindFirstChild("HumanoidRootPart")
@@ -637,53 +702,135 @@ task.spawn(function()
                     end
                 end
             end)
+        else
+            task.wait(3)
         end
     end
 end)
 
--- God Mode
+-- Speed Hack + God Mode
 RunService.Heartbeat:Connect(function()
     if not player.Character then return end
-    pcall(function()
-        local hum = player.Character:FindFirstChild("Humanoid")
-        if hum and flags.combat.godMode then
-            hum.Health = hum.MaxHealth
-        end
-    end)
+    local hum = player.Character:FindFirstChild("Humanoid")
+    if not hum then return end
+
+    if flags.movement.speedEnabled then
+        hum.WalkSpeed = flags.movement.speed
+    end
+
+    if flags.combat.godMode then
+        hum.Health = hum.MaxHealth
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    end
 end)
 
 -- Hitbox Expansion
+local originalSizes = {}
+local hitboxesExpanded = false
 task.spawn(function()
     while true do
-        task.wait(0.5)
         if flags.combat.hitboxExpand and player.Character then
+            hitboxesExpanded = true
+            task.wait(0.2)
             pcall(function()
-                for _, part in pairs(player.Character:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.Size = part.Size * (1 + (flags.combat.expandSize - 1) * 0.05)
+                for _, e in pairs(Workspace:GetChildren()) do
+                    if e:IsA("Model") and e:FindFirstChild("Humanoid") and e ~= player.Character then
+                        local hrp = e:FindFirstChild("HumanoidRootPart")
+                        if hrp and hrp:IsA("BasePart") then
+                            if not originalSizes[hrp] then
+                                originalSizes[hrp] = hrp.Size
+                            end
+                            hrp.Size = originalSizes[hrp] * flags.combat.expandSize
+                        end
                     end
                 end
             end)
+        else
+            if hitboxesExpanded then
+                pcall(function()
+                    for part, origSize in pairs(originalSizes) do
+                        if part.Parent then
+                            part.Size = origSize
+                        end
+                    end
+                    table.clear(originalSizes)
+                end)
+                hitboxesExpanded = false
+            end
+            task.wait(0.2)
         end
     end
 end)
 
--- Speed Hack
+-- Visual Hitboxes
+local hitboxAdornments = {}
+local hitboxesVisible = false
+task.spawn(function()
+    while true do
+        if flags.visuals.hitboxes and player.Character then
+            hitboxesVisible = true
+            task.wait(0.2)
+            pcall(function()
+                for _, e in pairs(Workspace:GetChildren()) do
+                    if e:IsA("Model") and e:FindFirstChild("Humanoid") and e ~= player.Character then
+                        local hrp = e:FindFirstChild("HumanoidRootPart")
+                        if hrp and hrp:IsA("BasePart") then
+                            if not hitboxAdornments[hrp] then
+                                local adorn = Instance.new("BoxHandleAdornment")
+                                adorn.Adornee = hrp
+                                adorn.Size = hrp.Size
+                                adorn.Color3 = Color3.new(1, 0, 0)
+                                adorn.Transparency = 0.5
+                                adorn.ZIndex = 1
+                                adorn.Parent = hrp
+                                hitboxAdornments[hrp] = adorn
+                            else
+                                hitboxAdornments[hrp].Size = hrp.Size
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            if hitboxesVisible then
+                pcall(function()
+                    for part, adorn in pairs(hitboxAdornments) do
+                        if adorn then adorn:Destroy() end
+                    end
+                    table.clear(hitboxAdornments)
+                end)
+                hitboxesVisible = false
+            end
+            task.wait(0.2)
+        end
+    end
+end)
+
+-- Speed Hack + God Mode
 RunService.Heartbeat:Connect(function()
     if not player.Character then return end
-    pcall(function()
-        local hum = player.Character:FindFirstChild("Humanoid")
-        if hum and flags.movement.speedEnabled then 
-            hum.WalkSpeed = flags.movement.speed 
-        end
-    end)
+    local hum = player.Character:FindFirstChild("Humanoid")
+    if not hum then return end
+
+    if flags.movement.speedEnabled then
+        hum.WalkSpeed = flags.movement.speed
+    end
+
+    if flags.combat.godMode then
+        hum.Health = hum.MaxHealth
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    end
 end)
 
 -- Flight
 task.spawn(function()
+    local wasFlying = false
     while true do
-        task.wait(0.02)
         if flags.movement.fly and player.Character then
+            wasFlying = true
+            task.wait(0.2)
             pcall(function()
                 local hrp = player.Character:FindFirstChild("HumanoidRootPart")
                 local hum = player.Character:FindFirstChild("Humanoid")
@@ -721,7 +868,7 @@ task.spawn(function()
                 hum.PlatformStand = true
             end)
         else
-            if player.Character then
+            if wasFlying and player.Character then
                 pcall(function()
                     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
                     local hum = player.Character:FindFirstChild("Humanoid")
@@ -733,7 +880,9 @@ task.spawn(function()
                         if bg then bg:Destroy() end
                     end
                 end)
+                wasFlying = false
             end
+            task.wait(0.2)
         end
     end
 end)
@@ -741,8 +890,8 @@ end)
 -- Noclip
 task.spawn(function()
     while true do
-        task.wait(0.05)
         if flags.movement.noclip and player.Character then
+            task.wait(0.2)
             pcall(function()
                 for _, part in pairs(player.Character:GetDescendants()) do
                     if part:IsA("BasePart") then
@@ -750,6 +899,8 @@ task.spawn(function()
                     end
                 end
             end)
+        else
+            task.wait(5)
         end
     end
 end)
@@ -757,8 +908,8 @@ end)
 -- Wall Walk
 task.spawn(function()
     while true do
-        task.wait(0.1)
         if flags.movement.wallWalk and player.Character then
+            task.wait(0.2)
             pcall(function()
                 local hrp = player.Character:FindFirstChild("HumanoidRootPart")
                 local hum = player.Character:FindFirstChild("Humanoid")
@@ -766,6 +917,8 @@ task.spawn(function()
                     hum:ChangeState(Enum.HumanoidStateType.Running)
                 end
             end)
+        else
+            task.wait(0.2)
         end
     end
 end)
@@ -800,9 +953,11 @@ end)
 -- Enemy ESP
 task.spawn(function()
     local espHighlights = {}
+    local espActive = false
     while true do
-        task.wait(0.5)
         if flags.visuals.esp then
+            espActive = true
+            task.wait(0.2)
             for _, o in pairs(Workspace:GetChildren()) do
                 if o:IsA("Model") and o:FindFirstChild("Humanoid") and o ~= player.Character then
                     if not espHighlights[o] then
@@ -816,10 +971,14 @@ task.spawn(function()
                 end
             end
         else
-            for o, h in pairs(espHighlights) do 
-                if h then pcall(function() h:Destroy() end) end 
+            if espActive then
+                for o, h in pairs(espHighlights) do 
+                    if h then pcall(function() h:Destroy() end) end 
+                end
+                table.clear(espHighlights)
+                espActive = false
             end
-            table.clear(espHighlights)
+            task.wait(0.2)
         end
     end
 end)
@@ -827,9 +986,11 @@ end)
 -- Player ESP
 task.spawn(function()
     local playerEspLabels = {}
+    local playerEspActive = false
     while true do
-        task.wait(0.3)
         if flags.player.playerEsp then
+            playerEspActive = true
+            task.wait(0.2)
             local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             if myHrp then
                 for _, p in pairs(Players:GetPlayers()) do
@@ -880,10 +1041,14 @@ task.spawn(function()
                 end
             end
         else
-            for p, data in pairs(playerEspLabels) do
-                if data.bg then pcall(function() data.bg:Destroy() end) end
+            if playerEspActive then
+                for p, data in pairs(playerEspLabels) do
+                    if data.bg then pcall(function() data.bg:Destroy() end) end
+                end
+                table.clear(playerEspLabels)
+                playerEspActive = false
             end
-            table.clear(playerEspLabels)
+            task.wait(0.2)
         end
     end
 end)
@@ -891,11 +1056,13 @@ end)
 -- Auto Click
 task.spawn(function()
     while true do
-        task.wait(flags.utility.clickSpeed)
         if flags.utility.autoClick then
+            task.wait(math.max(1, flags.utility.clickSpeed))
             pcall(function()
                 mouse1click()
             end)
+        else
+            task.wait(1)
         end
     end
 end)
@@ -903,8 +1070,8 @@ end)
 -- Auto Pickup
 task.spawn(function()
     while true do
-        task.wait(0.5)
         if flags.farming.autoPickup and player.Character then
+            task.wait(0.2)
             pcall(function()
                 local hrp = player.Character:FindFirstChild("HumanoidRootPart")
                 if hrp then
@@ -919,6 +1086,77 @@ task.spawn(function()
                     end
                 end
             end)
+        else
+            task.wait(0.2)
+        end
+    end
+end)
+
+-- Wall Hack
+local wallHackModifiedParts = {}
+local wallHackActive = false
+task.spawn(function()
+    while true do
+        if flags.visuals.wallHack and player.Character then
+            wallHackActive = true
+            task.wait(0.2)
+            pcall(function()
+                for _, part in pairs(Workspace:GetDescendants()) do
+                    if part:IsA("BasePart") and part.Transparency < 0.2 then
+                        if wallHackModifiedParts[part] == nil then
+                            wallHackModifiedParts[part] = part.Transparency
+                        end
+                        part.Transparency = 0.5
+                    end
+                end
+            end)
+        else
+            if wallHackActive then
+                pcall(function()
+                    for part, originalTransparency in pairs(wallHackModifiedParts) do
+                        if part and part.Parent then
+                            part.Transparency = originalTransparency
+                        end
+                    end
+                    table.clear(wallHackModifiedParts)
+                end)
+                wallHackActive = false
+            end
+            task.wait(0.2)
+        end
+    end
+end)
+
+-- Aimbot
+task.spawn(function()
+    while true do
+        if flags.player.aimbot and player.Character then
+            task.wait(0.2)
+            pcall(function()
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                local cam = Workspace.CurrentCamera
+                if hrp and cam then
+                    local nearestDist = math.huge
+                    local nearestEnemy = nil
+                    for _, e in pairs(Workspace:GetChildren()) do
+                        if e:IsA("Model") and e:FindFirstChild("Humanoid") and e ~= player.Character then
+                            local eHrp = e:FindFirstChild("HumanoidRootPart")
+                            if eHrp then
+                                local dist = (hrp.Position - eHrp.Position).Magnitude
+                                if dist < nearestDist then
+                                    nearestDist = dist
+                                    nearestEnemy = e
+                                end
+                            end
+                        end
+                    end
+                    if nearestEnemy then
+                        cam.CFrame = CFrame.new(cam.CFrame.Position, nearestEnemy.HumanoidRootPart.Position)
+                    end
+                end
+            end)
+        else
+            task.wait(0.2)
         end
     end
 end)
@@ -926,13 +1164,17 @@ end)
 -- Mute Audio
 task.spawn(function()
     while true do
-        task.wait(0.5)
         if flags.utility.soundMute then
+            task.wait(0.2)
             pcall(function()
-                for _, sound in pairs(Workspace:FindFirstChild("Sound") and Workspace.Sound:GetChildren() or {}) do
-                    sound.Volume = 0
+                for _, sound in pairs(Workspace:GetDescendants()) do
+                    if sound:IsA("Sound") then
+                        sound.Volume = 0
+                    end
                 end
             end)
+        else
+            task.wait(0.2)
         end
     end
 end)
@@ -941,7 +1183,7 @@ buildUI()
 
 task.spawn(function()
     while true do
-        task.wait(2)
+        task.wait(5)
         if not uiCreated then
             buildUI()
         end
