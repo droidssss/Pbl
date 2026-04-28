@@ -8,26 +8,97 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local uiCreated = false
 local espHighlights = {}
+local playerEspLabels = {}
+local menuOpen = true
+local keybindAwaitingInput = nil
+local uiElements = {}
 
 -- [ SETTINGS ] --
 local flags = {
-    fishing = {enabled = false, delay = 0.5},
-    combat = {enabled = false, mode = "Multi", range = 30},
-    movement = {speedEnabled = false, speed = 50, fly = false, flySpeed = 50, noclip = false, infJump = false},
-    visuals = {esp = false},
-    utility = {menuKey = Enum.KeyCode.RightControl}
+    combat = {
+        enabled = false,
+        range = 50,
+        autoSwing = false,
+        swingSpeed = 0.1,
+        hitEffect = true,
+        godMode = false,
+        hitboxExpand = false,
+        expandSize = 2
+    },
+    farming = {
+        autoFish = false,
+        fishDelay = 0.5,
+        autoPickup = false,
+        pickupRange = 50
+    },
+    movement = {
+        speedEnabled = false,
+        speed = 50,
+        fly = false,
+        flySpeed = 50,
+        noclip = false,
+        infJump = false,
+        wallWalk = false,
+        teleport = false,
+        teleportPlayer = ""
+    },
+    player = {
+        playerEsp = false,
+        showDistance = true,
+        showHealth = true,
+        showNames = true,
+        aimbot = false,
+        aimbotFov = 50
+    },
+    visuals = {
+        esp = false,
+        espColor = "Red",
+        chams = false,
+        customSky = false,
+        skyColor = Color3.fromRGB(255, 0, 128),
+        wallHack = false,
+        hitboxes = false
+    },
+    utility = {
+        autoClick = false,
+        clickSpeed = 0.1,
+        fpsCounter = true,
+        coords = true,
+        antiLag = false,
+        soundMute = false
+    }
+}
+
+local keybinds = {
+    combatEnabled = Enum.KeyCode.C,
+    autoSwing = Enum.KeyCode.X,
+    autoFish = Enum.KeyCode.F,
+    speedEnabled = Enum.KeyCode.V,
+    flight = Enum.KeyCode.Z,
+    noclip = Enum.KeyCode.N,
+    infJump = Enum.KeyCode.J,
+    autoClick = Enum.KeyCode.M,
+    playerEsp = Enum.KeyCode.E,
+    esp = Enum.KeyCode.G,
+    godMode = Enum.KeyCode.H,
+    wallWalk = Enum.KeyCode.W,
+    aimbot = Enum.KeyCode.A
 }
 
 local THEME = {
     Bg = Color3.fromRGB(11, 11, 14),
     Side = Color3.fromRGB(15, 15, 20),
     Accent = Color3.fromRGB(0, 160, 255),
-    RestoreBtn = Color3.fromRGB(20, 20, 25), -- Darker, more solid
+    AccentAlt = Color3.fromRGB(255, 80, 80),
+    RestoreBtn = Color3.fromRGB(20, 20, 25),
     Text = Color3.fromRGB(240, 240, 245),
     TextDim = Color3.fromRGB(120, 120, 130),
     Border = Color3.fromRGB(35, 35, 45),
     SwitchOn = Color3.fromRGB(0, 180, 255),
-    SwitchOff = Color3.fromRGB(30, 30, 35)
+    SwitchOff = Color3.fromRGB(30, 30, 35),
+    ElementBg = Color3.fromRGB(22, 22, 28),
+    Green = Color3.fromRGB(76, 175, 80),
+    Yellow = Color3.fromRGB(255, 193, 7)
 }
 
 -- [ LOGIC: REMOTES ] --
@@ -37,7 +108,8 @@ local function getRemotes()
     return {
         sw = r:FindFirstChild("swing") or r:FindFirstChild("Swing"),
         hit = r:FindFirstChild("onHit") or r:FindFirstChild("OnHit"),
-        fish = r:FindFirstChild("fishCaught") or r:FindFirstChild("FishCaught")
+        fish = r:FindFirstChild("fishCaught") or r:FindFirstChild("FishCaught"),
+        block = r:FindFirstChild("block") or r:FindFirstChild("Block")
     }
 end
 
@@ -79,7 +151,6 @@ local function buildUI()
     statusLabel.TextSize = 14
     statusLabel.BackgroundTransparency = 1
 
-    -- Bar Container
     local barContainer = Instance.new("Frame", loader)
     barContainer.Size = UDim2.new(0.8, 0, 0, 6)
     barContainer.Position = UDim2.new(0.1, 0, 0, 140)
@@ -91,35 +162,24 @@ local function buildUI()
     barFill.BackgroundColor3 = THEME.Accent
     Instance.new("UICorner", barFill)
 
-    -- Loading Animation Logic
-    local loadingSteps = {
-        "Loading Kill Aura System...",
-        "Bypassing Anticheat...",
-        "Hooking Remotes...",
-        "Setting up Movement Modules...",
-        "Injecting Fishing Script...",
-        "Loading UI Theme...",
-        "Ready!"
-    }
+    local loadingSteps = {"Loading Kill Aura System...", "Initializing Auto-Farm...", "Hooking Remotes...", "Setting up Movement...", "Injecting Fishing Script...", "Loading Player Manager...", "Ready!"}
 
     task.spawn(function()
         for i, status in ipairs(loadingSteps) do
             statusLabel.Text = status
-            local targetSize = UDim2.new(i / #loadingSteps, 0, 1, 0)
-            TweenService:Create(barFill, TweenInfo.new(0.45, Enum.EasingStyle.Quart), {Size = targetSize}):Play()
+            TweenService:Create(barFill, TweenInfo.new(0.45, Enum.EasingStyle.Quart), {Size = UDim2.new(i / #loadingSteps, 0, 1, 0)}):Play()
             task.wait(0.4)
         end
         task.wait(0.3)
         loader:Destroy()
     end)
 
-    -- Wait for loader to finish before showing main GUI
-    repeat task.wait() until not sg:FindFirstChild("Frame") or not loader.Parent
+    repeat task.wait() until not loader.Parent
 
     -- [[ MAIN GUI ]] --
     local main = Instance.new("Frame", sg)
-    main.Size = UDim2.new(0, 720, 0, 500)
-    main.Position = UDim2.new(0.5, -360, 0.5, -250)
+    main.Size = UDim2.new(0, 900, 0, 650)
+    main.Position = UDim2.new(0.5, -450, 0.5, -325)
     main.BackgroundColor3 = THEME.Bg
     Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
     local mainStroke = Instance.new("UIStroke", main)
@@ -129,7 +189,7 @@ local function buildUI()
     -- [[ RESTORE BUTTON ]] --
     local openBtn = Instance.new("TextButton", sg)
     openBtn.Size = UDim2.new(0, 140, 0, 35)
-    openBtn.Position = UDim2.new(0.5, -70, 0, -50) -- Hidden initially
+    openBtn.Position = UDim2.new(0.5, -70, 0, -50)
     openBtn.BackgroundColor3 = THEME.RestoreBtn
     openBtn.Text = "RESTORE MENU"
     openBtn.Font = Enum.Font.GothamBold
@@ -140,9 +200,7 @@ local function buildUI()
     local openStroke = Instance.new("UIStroke", openBtn)
     openStroke.Color = THEME.Accent
     openStroke.Thickness = 1.5
-    openStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- Restore Hover Effects
     openBtn.MouseEnter:Connect(function()
         TweenService:Create(openStroke, TweenInfo.new(0.3), {Thickness = 3, Color = Color3.new(1,1,1)}):Play()
     end)
@@ -151,6 +209,7 @@ local function buildUI()
     end)
 
     local function toggleMenu(visible)
+        menuOpen = visible
         main.Visible = visible
         TweenService:Create(openBtn, TweenInfo.new(0.5, Enum.EasingStyle.Quart), {Position = visible and UDim2.new(0.5, -70, 0, -50) or UDim2.new(0.5, -70, 0, 30)}):Play()
     end
@@ -165,7 +224,7 @@ local function buildUI()
     local title = Instance.new("TextLabel", top)
     title.Size = UDim2.new(0.5, 0, 1, 0)
     title.Position = UDim2.new(0, 20, 0, 0)
-    title.Text = "MONKK'S Cheats | V3.14"
+    title.Text = "MONKK'S CHEATS | ADVANCED HUB"
     title.Font = Enum.Font.GothamBold
     title.TextColor3 = THEME.Text
     title.TextSize = 13
@@ -179,7 +238,7 @@ local function buildUI()
     close.TextColor3 = Color3.fromRGB(255, 80, 80)
     close.TextSize = 26
     close.BackgroundTransparency = 1
-    close.MouseButton1Click:Connect(function() sg:Destroy() end)
+    close.MouseButton1Click:Connect(function() sg:Destroy() uiCreated = false end)
 
     local min = Instance.new("TextButton", top)
     min.Size = UDim2.new(0, 40, 0, 40)
@@ -189,6 +248,56 @@ local function buildUI()
     min.TextSize = 26
     min.BackgroundTransparency = 1
     min.MouseButton1Click:Connect(function() toggleMenu(false) end)
+
+    -- FPS Counter Display
+    local fpsLabel = Instance.new("TextLabel", sg)
+    fpsLabel.Size = UDim2.new(0, 100, 0, 30)
+    fpsLabel.Position = UDim2.new(1, -110, 0, 10)
+    fpsLabel.BackgroundColor3 = THEME.ElementBg
+    fpsLabel.TextColor3 = THEME.Accent
+    fpsLabel.Font = Enum.Font.GothamBold
+    fpsLabel.TextSize = 14
+    fpsLabel.Text = "FPS: 60"
+    Instance.new("UICorner", fpsLabel).CornerRadius = UDim.new(0, 6)
+    Instance.new("UIStroke", fpsLabel).Color = THEME.Border
+
+    -- Coordinates Display
+    local coordsLabel = Instance.new("TextLabel", sg)
+    coordsLabel.Size = UDim2.new(0, 150, 0, 45)
+    coordsLabel.Position = UDim2.new(0, 10, 0, 10)
+    coordsLabel.BackgroundColor3 = THEME.ElementBg
+    coordsLabel.TextColor3 = THEME.Accent
+    coordsLabel.Font = Enum.Font.GothamBold
+    coordsLabel.TextSize = 11
+    coordsLabel.Text = "X: 0 Y: 0 Z: 0"
+    coordsLabel.TextWrapped = true
+    Instance.new("UICorner", coordsLabel).CornerRadius = UDim.new(0, 6)
+    Instance.new("UIStroke", coordsLabel).Color = THEME.Border
+
+    task.spawn(function()
+        local lastTime = tick()
+        local frameCount = 0
+        while fpsLabel and fpsLabel.Parent do
+            frameCount = frameCount + 1
+            local currentTime = tick()
+            if currentTime - lastTime >= 1 then
+                if flags.utility.fpsCounter then
+                    fpsLabel.Visible = true
+                    fpsLabel.Text = "FPS: " .. frameCount
+                else
+                    fpsLabel.Visible = false
+                end
+                frameCount = 0
+                lastTime = currentTime
+            end
+            
+            if flags.utility.coords and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local pos = player.Character.HumanoidRootPart.Position
+                coordsLabel.Text = string.format("X: %.1f\nY: %.1f\nZ: %.1f", pos.X, pos.Y, pos.Z)
+            end
+            task.wait()
+        end
+    end)
 
     -- Sidebar
     local side = Instance.new("Frame", main)
@@ -229,8 +338,15 @@ local function buildUI()
         local sc = Instance.new("ScrollingFrame", cg)
         sc.Size = UDim2.new(1, 0, 1, 0)
         sc.BackgroundTransparency = 1
-        sc.ScrollBarThickness = 1
-        Instance.new("UIListLayout", sc).Padding = UDim.new(0, 10)
+        sc.ScrollBarThickness = 0
+        sc.CanvasSize = UDim2.new(1, 0, 0, 0)
+        local layout = Instance.new("UIListLayout", sc)
+        layout.Padding = UDim.new(0, 10)
+        layout.FillDirection = Enum.FillDirection.Vertical
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Changed:Connect(function()
+            sc.CanvasSize = UDim2.new(1, 0, 0, layout.AbsoluteContentSize.Y + 30)
+        end)
         Instance.new("UIPadding", sc).PaddingTop = UDim.new(0, 15)
         Instance.new("UIPadding", sc).PaddingLeft = UDim.new(0, 20)
         Instance.new("UIPadding", sc).PaddingRight = UDim.new(0, 20)
@@ -252,16 +368,16 @@ local function buildUI()
         return sc
     end
 
-    -- Switch Component
-    local function addToggle(p, text, tbl, key)
+    -- Toggle with Keybind
+    local function addToggleWithKeybind(p, text, tbl, key, keybindKey)
         local f = Instance.new("Frame", p)
-        f.Size = UDim2.new(1, 0, 0, 50)
-        f.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+        f.Size = UDim2.new(1, 0, 0, 60)
+        f.BackgroundColor3 = THEME.ElementBg
         Instance.new("UICorner", f)
         
         local l = Instance.new("TextLabel", f)
-        l.Size = UDim2.new(0.6, 0, 1, 0)
-        l.Position = UDim2.new(0, 15, 0, 0)
+        l.Size = UDim2.new(0.5, 0, 0, 25)
+        l.Position = UDim2.new(0, 15, 0, 5)
         l.Text = text:upper()
         l.TextColor3 = THEME.Text
         l.Font = Enum.Font.GothamBold
@@ -271,7 +387,7 @@ local function buildUI()
 
         local track = Instance.new("Frame", f)
         track.Size = UDim2.new(0, 40, 0, 20)
-        track.Position = UDim2.new(1, -55, 0.5, -10)
+        track.Position = UDim2.new(1, -55, 0, 5)
         track.BackgroundColor3 = tbl[key] and THEME.SwitchOn or THEME.SwitchOff
         Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
@@ -291,12 +407,35 @@ local function buildUI()
             TweenService:Create(track, TweenInfo.new(0.2), {BackgroundColor3 = tbl[key] and THEME.SwitchOn or THEME.SwitchOff}):Play()
             TweenService:Create(knob, TweenInfo.new(0.2), {Position = tbl[key] and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)}):Play()
         end)
+
+        -- Keybind Button
+        local keybindBtn = Instance.new("TextButton", f)
+        keybindBtn.Size = UDim2.new(0, 60, 0, 20)
+        keybindBtn.Position = UDim2.new(0, 15, 0, 32)
+        keybindBtn.BackgroundColor3 = THEME.Side
+        keybindBtn.TextColor3 = THEME.Accent
+        keybindBtn.Font = Enum.Font.GothamBold
+        keybindBtn.TextSize = 9
+        keybindBtn.Text = "Key: " .. tostring(keybindKey):match("KeyCode%.(.+)")
+        Instance.new("UICorner", keybindBtn).CornerRadius = UDim.new(0, 4)
+
+        keybindBtn.MouseButton1Click:Connect(function()
+            keybindBtn.Text = "Press Key..."
+            keybindBtn.TextColor3 = THEME.Yellow
+            keybindAwaitingInput = {keyName = keybindKey, btn = keybindBtn}
+        end)
+
+        -- Store UI element for updating
+        uiElements[tostring(tbl) .. key] = {track = track, knob = knob, tbl = tbl, key = key}
+
+        return keybindBtn
     end
 
-    local function addInput(p, text, tbl, key)
+    -- Input with Label
+    local function addInputWithLabel(p, text, tbl, key, minVal, maxVal)
         local f = Instance.new("Frame", p)
         f.Size = UDim2.new(1, 0, 0, 50)
-        f.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+        f.BackgroundColor3 = THEME.ElementBg
         Instance.new("UICorner", f)
 
         local l = Instance.new("TextLabel", f)
@@ -321,28 +460,68 @@ local function buildUI()
         
         i.FocusLost:Connect(function() 
             local val = tonumber(i.Text)
-            if val then tbl[key] = val end
+            if val then
+                if minVal and val < minVal then val = minVal end
+                if maxVal and val > maxVal then val = maxVal end
+                tbl[key] = val
+            end
             i.Text = tostring(tbl[key])
         end)
     end
 
     -- Setup Tabs
     local combatP = createTab("COMBAT")
-    local fishingP = createTab("FISHING")
+    local farmingP = createTab("FARMING")
     local moveP = createTab("MOVEMENT")
+    local playerP = createTab("PLAYER")
     local visP = createTab("VISUALS")
+    local utilP = createTab("UTILITY")
 
-    addToggle(combatP, "Enable Kill Aura", flags.combat, "enabled")
-    addInput(combatP, "Range", flags.combat, "range")
+    -- COMBAT TAB
+    addToggleWithKeybind(combatP, "Kill Aura", flags.combat, "enabled", keybinds.combatEnabled)
+    addInputWithLabel(combatP, "Range", flags.combat, "range", 10, 200)
+    addToggleWithKeybind(combatP, "Auto Swing", flags.combat, "autoSwing", keybinds.autoSwing)
+    addInputWithLabel(combatP, "Swing Speed", flags.combat, "swingSpeed", 0.05, 1)
+    addToggleWithKeybind(combatP, "God Mode", flags.combat, "godMode", keybinds.godMode)
+    addToggleWithKeybind(combatP, "Hitbox Expand", flags.combat, "hitboxExpand", keybinds.autoSwing)
+    addInputWithLabel(combatP, "Expand Size", flags.combat, "expandSize", 1, 10)
 
-    addToggle(fishingP, "Auto-Fishing", flags.fishing, "enabled")
-    addInput(fishingP, "Catch Delay", flags.fishing, "delay")
+    -- FARMING TAB
+    addToggleWithKeybind(farmingP, "Auto-Fish", flags.farming, "autoFish", keybinds.autoFish)
+    addInputWithLabel(farmingP, "Fish Delay", flags.farming, "fishDelay", 0.1, 5)
+    addToggleWithKeybind(farmingP, "Auto Pickup", flags.farming, "autoPickup", keybinds.autoFish)
+    addInputWithLabel(farmingP, "Pickup Range", flags.farming, "pickupRange", 10, 200)
 
-    addToggle(moveP, "SpeedHack", flags.movement, "speedEnabled")
-    addInput(moveP, "Speed Value", flags.movement, "speed")
-    addToggle(moveP, "Flight", flags.movement, "fly")
+    -- MOVEMENT TAB
+    addToggleWithKeybind(moveP, "Speed Hack", flags.movement, "speedEnabled", keybinds.speedEnabled)
+    addInputWithLabel(moveP, "Speed Value", flags.movement, "speed", 10, 300)
+    addToggleWithKeybind(moveP, "Flight", flags.movement, "fly", keybinds.flight)
+    addInputWithLabel(moveP, "Fly Speed", flags.movement, "flySpeed", 10, 300)
+    addToggleWithKeybind(moveP, "Noclip", flags.movement, "noclip", keybinds.noclip)
+    addToggleWithKeybind(moveP, "Wall Walk", flags.movement, "wallWalk", keybinds.wallWalk)
+    addToggleWithKeybind(moveP, "Infinite Jump", flags.movement, "infJump", keybinds.infJump)
 
-    addToggle(visP, "ESP", flags.visuals, "esp")
+    -- PLAYER TAB
+    addToggleWithKeybind(playerP, "Player ESP", flags.player, "playerEsp", keybinds.playerEsp)
+    addToggleWithKeybind(playerP, "Show Distance", flags.player, "showDistance", keybinds.playerEsp)
+    addToggleWithKeybind(playerP, "Show Health", flags.player, "showHealth", keybinds.playerEsp)
+    addToggleWithKeybind(playerP, "Show Names", flags.player, "showNames", keybinds.playerEsp)
+    addToggleWithKeybind(playerP, "Aimbot", flags.player, "aimbot", keybinds.aimbot)
+    addInputWithLabel(playerP, "Aimbot FOV", flags.player, "aimbotFov", 10, 180)
+
+    -- VISUALS TAB
+    addToggleWithKeybind(visP, "Enemy ESP", flags.visuals, "esp", keybinds.esp)
+    addToggleWithKeybind(visP, "Wall Hack", flags.visuals, "wallHack", keybinds.esp)
+    addToggleWithKeybind(visP, "Hitboxes", flags.visuals, "hitboxes", keybinds.esp)
+    addToggleWithKeybind(visP, "Custom Sky", flags.visuals, "customSky", keybinds.esp)
+
+    -- UTILITY TAB
+    addToggleWithKeybind(utilP, "Auto Click", flags.utility, "autoClick", keybinds.autoClick)
+    addInputWithLabel(utilP, "Click Speed", flags.utility, "clickSpeed", 0.05, 2)
+    addToggleWithKeybind(utilP, "FPS Counter", flags.utility, "fpsCounter", keybinds.autoClick)
+    addToggleWithKeybind(utilP, "Coordinates", flags.utility, "coords", keybinds.autoClick)
+    addToggleWithKeybind(utilP, "Anti-Lag", flags.utility, "antiLag", keybinds.autoClick)
+    addToggleWithKeybind(utilP, "Mute Audio", flags.utility, "soundMute", keybinds.autoClick)
 
     -- Draggable
     local d, dS, sP
@@ -353,66 +532,418 @@ local function buildUI()
     end end)
     top.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then d = false end end)
 
+    -- UI Update System
+    task.spawn(function()
+        while uiCreated do
+            task.wait(0.05)
+            for id, elem in pairs(uiElements) do
+                if elem.tbl and elem.key then
+                    local isOn = elem.tbl[elem.key]
+                    elem.track.BackgroundColor3 = isOn and THEME.SwitchOn or THEME.SwitchOff
+                    elem.knob.Position = isOn and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+                end
+            end
+        end
+    end)
+
     uiCreated = true
 end
 
--- [[ OPTIMIZED LOOPS ]] --
+-- [[ HOTKEY SYSTEM ]] --
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    -- Handle setting keybind
+    if keybindAwaitingInput and input.UserInputType == Enum.UserInputType.Keyboard then
+        local keyName = tostring(input.KeyCode):match("KeyCode%.(.+)") or "Unknown"
+        keybinds[keybindAwaitingInput.keyName] = input.KeyCode
+        keybindAwaitingInput.btn.Text = "Key: " .. keyName
+        keybindAwaitingInput.btn.TextColor3 = THEME.Accent
+        keybindAwaitingInput = nil
+        return
+    end
 
-task.spawn(function()
-    while true do
-        task.wait(math.max(0.1, flags.fishing.delay))
-        if flags.fishing.enabled then
-            local rems = getRemotes()
-            if rems and rems.fish then rems.fish:FireServer(Vector3.zero, -1) end
+    -- Handle feature toggling
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.Keyboard then
+        local pressedKey = input.KeyCode
+        
+        if pressedKey == keybinds.combatEnabled then
+            flags.combat.enabled = not flags.combat.enabled
+        elseif pressedKey == keybinds.autoSwing then
+            flags.combat.autoSwing = not flags.combat.autoSwing
+        elseif pressedKey == keybinds.autoFish then
+            flags.farming.autoFish = not flags.farming.autoFish
+        elseif pressedKey == keybinds.speedEnabled then
+            flags.movement.speedEnabled = not flags.movement.speedEnabled
+        elseif pressedKey == keybinds.flight then
+            flags.movement.fly = not flags.movement.fly
+        elseif pressedKey == keybinds.noclip then
+            flags.movement.noclip = not flags.movement.noclip
+        elseif pressedKey == keybinds.wallWalk then
+            flags.movement.wallWalk = not flags.movement.wallWalk
+        elseif pressedKey == keybinds.infJump then
+            flags.movement.infJump = not flags.movement.infJump
+        elseif pressedKey == keybinds.autoClick then
+            flags.utility.autoClick = not flags.utility.autoClick
+        elseif pressedKey == keybinds.playerEsp then
+            flags.player.playerEsp = not flags.player.playerEsp
+        elseif pressedKey == keybinds.esp then
+            flags.visuals.esp = not flags.visuals.esp
+        elseif pressedKey == keybinds.godMode then
+            flags.combat.godMode = not flags.combat.godMode
+        elseif pressedKey == keybinds.aimbot then
+            flags.player.aimbot = not flags.player.aimbot
         end
     end
 end)
 
+-- [[ FEATURE IMPLEMENTATIONS ]] --
+
+-- Auto Fishing
 task.spawn(function()
     while true do
-        task.wait(0.1)
+        task.wait(math.max(0.1, flags.farming.fishDelay))
+        if flags.farming.autoFish and player.Character then
+            pcall(function()
+                local rems = getRemotes()
+                if rems and rems.fish then 
+                    rems.fish:FireServer(Vector3.zero, -1) 
+                end
+            end)
+        end
+    end
+end)
+
+-- Combat System
+task.spawn(function()
+    local swingCooldown = 0
+    while true do
+        task.wait(0.05)
         if flags.combat.enabled and player.Character then
-            local rems = getRemotes()
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-            if rems and rems.sw and rems.hit and hrp then
-                for _, e in pairs(Workspace:GetChildren()) do
-                    if e:IsA("Model") and e ~= player.Character and e:FindFirstChild("Humanoid") then
-                        local er = e:FindFirstChild("HumanoidRootPart")
-                        if er and (hrp.Position - er.Position).Magnitude <= flags.combat.range then
-                            rems.sw:FireServer()
-                            rems.hit:FireServer(e.Humanoid, 999, {}, 0)
+            pcall(function()
+                local rems = getRemotes()
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                if rems and rems.sw and rems.hit and hrp then
+                    for _, e in pairs(Workspace:GetChildren()) do
+                        if e:IsA("Model") and e ~= player.Character and e:FindFirstChild("Humanoid") and e:FindFirstChild("HumanoidRootPart") then
+                            local er = e:FindFirstChild("HumanoidRootPart")
+                            local dist = (hrp.Position - er.Position).Magnitude
+                            if dist <= flags.combat.range then
+                                if flags.combat.autoSwing and tick() >= swingCooldown then
+                                    rems.sw:FireServer()
+                                    swingCooldown = tick() + flags.combat.swingSpeed
+                                end
+                                rems.hit:FireServer(e.Humanoid, 999999, {}, 0)
+                            end
                         end
                     end
                 end
+            end)
+        end
+    end
+end)
+
+-- God Mode
+RunService.Heartbeat:Connect(function()
+    if not player.Character then return end
+    pcall(function()
+        local hum = player.Character:FindFirstChild("Humanoid")
+        if hum and flags.combat.godMode then
+            hum.Health = hum.MaxHealth
+        end
+    end)
+end)
+
+-- Hitbox Expansion
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if flags.combat.hitboxExpand and player.Character then
+            pcall(function()
+                for _, part in pairs(player.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.Size = part.Size * (1 + (flags.combat.expandSize - 1) * 0.05)
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- Speed Hack
+RunService.Heartbeat:Connect(function()
+    if not player.Character then return end
+    pcall(function()
+        local hum = player.Character:FindFirstChild("Humanoid")
+        if hum and flags.movement.speedEnabled then 
+            hum.WalkSpeed = flags.movement.speed 
+        end
+    end)
+end)
+
+-- Flight
+task.spawn(function()
+    while true do
+        task.wait(0.02)
+        if flags.movement.fly and player.Character then
+            pcall(function()
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                local hum = player.Character:FindFirstChild("Humanoid")
+                if not hrp or not hum then return end
+
+                local bv = hrp:FindFirstChild("FlyVel")
+                if not bv then
+                    bv = Instance.new("BodyVelocity")
+                    bv.Name = "FlyVel"
+                    bv.Velocity = Vector3.zero
+                    bv.MaxForce = Vector3.new(999999,999999,999999)
+                    bv.Parent = hrp
+                end
+
+                local bg = hrp:FindFirstChild("FlyGyro")
+                if not bg then
+                    bg = Instance.new("BodyGyro")
+                    bg.Name = "FlyGyro"
+                    bg.CFrame = hrp.CFrame
+                    bg.MaxTorque = Vector3.new(999999,999999,999999)
+                    bg.Parent = hrp
+                end
+
+                local cam = Workspace.CurrentCamera
+                local moveDir = Vector3.zero
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,1,0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0,1,0) end
+
+                bv.Velocity = (moveDir.Magnitude > 0 and moveDir.Unit or Vector3.zero) * flags.movement.flySpeed
+                bg.CFrame = cam.CFrame
+                hum.PlatformStand = true
+            end)
+        else
+            if player.Character then
+                pcall(function()
+                    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                    local hum = player.Character:FindFirstChild("Humanoid")
+                    if hum then hum.PlatformStand = false end
+                    if hrp then
+                        local bv = hrp:FindFirstChild("FlyVel")
+                        local bg = hrp:FindFirstChild("FlyGyro")
+                        if bv then bv:Destroy() end
+                        if bg then bg:Destroy() end
+                    end
+                end)
             end
+        end
+    end
+end)
+
+-- Noclip
+task.spawn(function()
+    while true do
+        task.wait(0.05)
+        if flags.movement.noclip and player.Character then
+            pcall(function()
+                for _, part in pairs(player.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- Wall Walk
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if flags.movement.wallWalk and player.Character then
+            pcall(function()
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                local hum = player.Character:FindFirstChild("Humanoid")
+                if hrp and hum then
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                end
+            end)
+        end
+    end
+end)
+
+-- Infinite Jump
+local canInfJump = false
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.KeyCode == Enum.KeyCode.Space and not gameProcessed and flags.movement.infJump and player.Character then
+        canInfJump = true
+        local hum = player.Character:FindFirstChild("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end
 end)
 
 RunService.Heartbeat:Connect(function()
-    if not uiCreated or not player.Character then return end
-    local hum = player.Character:FindFirstChild("Humanoid")
-    if hum and flags.movement.speedEnabled then hum.WalkSpeed = flags.movement.speed end
+    if canInfJump and flags.movement.infJump and player.Character then
+        local hum = player.Character:FindFirstChild("Humanoid")
+        if hum and hum:GetState() == Enum.HumanoidStateType.Landed then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
 end)
 
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Space then
+        canInfJump = false
+    end
+end)
+
+-- Enemy ESP
 task.spawn(function()
+    local espHighlights = {}
     while true do
-        task.wait(1)
+        task.wait(0.5)
         if flags.visuals.esp then
             for _, o in pairs(Workspace:GetChildren()) do
                 if o:IsA("Model") and o:FindFirstChild("Humanoid") and o ~= player.Character then
                     if not espHighlights[o] then
-                        local h = Instance.new("Highlight", o)
-                        h.FillColor = THEME.Accent
-                        espHighlights[o] = h
+                        pcall(function()
+                            local h = Instance.new("Highlight", o)
+                            h.FillColor = THEME.Accent
+                            h.FillTransparency = 0.5
+                            espHighlights[o] = h
+                        end)
                     end
                 end
             end
         else
-            for o, h in pairs(espHighlights) do if h then h:Destroy() end end
+            for o, h in pairs(espHighlights) do 
+                if h then pcall(function() h:Destroy() end) end 
+            end
             table.clear(espHighlights)
         end
     end
 end)
 
+-- Player ESP
+task.spawn(function()
+    local playerEspLabels = {}
+    while true do
+        task.wait(0.3)
+        if flags.player.playerEsp then
+            local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if myHrp then
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                        local hum = p.Character:FindFirstChild("Humanoid")
+                        
+                        if not playerEspLabels[p] then
+                            pcall(function()
+                                local bg = Instance.new("BillboardGui")
+                                bg.MaxDistance = 500
+                                bg.Size = UDim2.new(4,0,2,0)
+                                bg.StudsOffset = Vector3.new(0, 3, 0)
+                                bg.Parent = hrp
+
+                                local label = Instance.new("TextLabel")
+                                label.Size = UDim2.new(1,0,1,0)
+                                label.BackgroundColor3 = Color3.fromRGB(0,0,0)
+                                label.BackgroundTransparency = 0.3
+                                label.TextColor3 = THEME.Accent
+                                label.Font = Enum.Font.GothamBold
+                                label.TextSize = 12
+                                label.TextWrapped = true
+                                label.Parent = bg
+                                Instance.new("UICorner", label).CornerRadius = UDim.new(0, 4)
+
+                                playerEspLabels[p] = {bg = bg, label = label}
+                            end)
+                        end
+
+                        if playerEspLabels[p] then
+                            pcall(function()
+                                local dist = (myHrp.Position - hrp.Position).Magnitude
+                                local text = ""
+                                if flags.player.showNames then text = text .. p.Name end
+                                if flags.player.showDistance then
+                                    if text ~= "" then text = text .. "\n" end
+                                    text = text .. string.format("%.0f m", dist)
+                                end
+                                if flags.player.showHealth and hum then
+                                    if text ~= "" then text = text .. "\n" end
+                                    text = text .. string.format("%.0f/%.0f", hum.Health, hum.MaxHealth)
+                                end
+                                playerEspLabels[p].label.Text = text
+                            end)
+                        end
+                    end
+                end
+            end
+        else
+            for p, data in pairs(playerEspLabels) do
+                if data.bg then pcall(function() data.bg:Destroy() end) end
+            end
+            table.clear(playerEspLabels)
+        end
+    end
+end)
+
+-- Auto Click
+task.spawn(function()
+    while true do
+        task.wait(flags.utility.clickSpeed)
+        if flags.utility.autoClick then
+            pcall(function()
+                mouse1click()
+            end)
+        end
+    end
+end)
+
+-- Auto Pickup
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if flags.farming.autoPickup and player.Character then
+            pcall(function()
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    for _, item in pairs(Workspace:GetChildren()) do
+                        if item:IsA("Model") and item ~= player.Character then
+                            local itemPos = item:FindFirstChild("HumanoidRootPart") or item.PrimaryPart
+                            if itemPos and (hrp.Position - itemPos.Position).Magnitude <= flags.farming.pickupRange then
+                                item.PrimaryPart = itemPos
+                                item:MoveTo(hrp.Position)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- Mute Audio
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if flags.utility.soundMute then
+            pcall(function()
+                for _, sound in pairs(Workspace:FindFirstChild("Sound") and Workspace.Sound:GetChildren() or {}) do
+                    sound.Volume = 0
+                end
+            end)
+        end
+    end
+end)
+
 buildUI()
+
+task.spawn(function()
+    while true do
+        task.wait(2)
+        if not uiCreated then
+            buildUI()
+        end
+    end
+end)
