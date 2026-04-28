@@ -1,0 +1,418 @@
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local uiCreated = false
+local espHighlights = {}
+
+-- [ SETTINGS ] --
+local flags = {
+    fishing = {enabled = false, delay = 0.5},
+    combat = {enabled = false, mode = "Multi", range = 30},
+    movement = {speedEnabled = false, speed = 50, fly = false, flySpeed = 50, noclip = false, infJump = false},
+    visuals = {esp = false},
+    utility = {menuKey = Enum.KeyCode.RightControl}
+}
+
+local THEME = {
+    Bg = Color3.fromRGB(11, 11, 14),
+    Side = Color3.fromRGB(15, 15, 20),
+    Accent = Color3.fromRGB(0, 160, 255),
+    RestoreBtn = Color3.fromRGB(20, 20, 25), -- Darker, more solid
+    Text = Color3.fromRGB(240, 240, 245),
+    TextDim = Color3.fromRGB(120, 120, 130),
+    Border = Color3.fromRGB(35, 35, 45),
+    SwitchOn = Color3.fromRGB(0, 180, 255),
+    SwitchOff = Color3.fromRGB(30, 30, 35)
+}
+
+-- [ LOGIC: REMOTES ] --
+local function getRemotes()
+    local r = ReplicatedStorage:FindFirstChild("remotes") or ReplicatedStorage:FindFirstChild("Remotes")
+    if not r then return nil end
+    return {
+        sw = r:FindFirstChild("swing") or r:FindFirstChild("Swing"),
+        hit = r:FindFirstChild("onHit") or r:FindFirstChild("OnHit"),
+        fish = r:FindFirstChild("fishCaught") or r:FindFirstChild("FishCaught")
+    }
+end
+
+-- [ UI BUILDER ] --
+local function buildUI()
+    for _, v in pairs(player.PlayerGui:GetChildren()) do
+        if v.Name == "MonkksPrestige_V5" then v:Destroy() end
+    end
+
+    local sg = Instance.new("ScreenGui", player.PlayerGui)
+    sg.Name = "MonkksPrestige_V5"
+    sg.ResetOnSpawn = false
+
+    -- [[ LOADING SCREEN ]] --
+    local loader = Instance.new("Frame", sg)
+    loader.Size = UDim2.new(0, 400, 0, 200)
+    loader.Position = UDim2.new(0.5, -200, 0.5, -100)
+    loader.BackgroundColor3 = THEME.Bg
+    Instance.new("UICorner", loader).CornerRadius = UDim.new(0, 15)
+    local lStroke = Instance.new("UIStroke", loader)
+    lStroke.Color = THEME.Accent
+    lStroke.Thickness = 2
+    
+    local lTitle = Instance.new("TextLabel", loader)
+    lTitle.Size = UDim2.new(1, 0, 0, 60)
+    lTitle.Position = UDim2.new(0, 0, 0, 30)
+    lTitle.Text = "MONKKS V5 ELITE"
+    lTitle.Font = Enum.Font.GothamBold
+    lTitle.TextColor3 = THEME.Text
+    lTitle.TextSize = 28
+    lTitle.BackgroundTransparency = 1
+
+    local statusLabel = Instance.new("TextLabel", loader)
+    statusLabel.Size = UDim2.new(1, 0, 0, 30)
+    statusLabel.Position = UDim2.new(0, 0, 0, 100)
+    statusLabel.Text = "Initializing Core..."
+    statusLabel.Font = Enum.Font.GothamMedium
+    statusLabel.TextColor3 = THEME.Accent
+    statusLabel.TextSize = 14
+    statusLabel.BackgroundTransparency = 1
+
+    -- Bar Container
+    local barContainer = Instance.new("Frame", loader)
+    barContainer.Size = UDim2.new(0.8, 0, 0, 6)
+    barContainer.Position = UDim2.new(0.1, 0, 0, 140)
+    barContainer.BackgroundColor3 = THEME.Border
+    Instance.new("UICorner", barContainer)
+
+    local barFill = Instance.new("Frame", barContainer)
+    barFill.Size = UDim2.new(0, 0, 1, 0)
+    barFill.BackgroundColor3 = THEME.Accent
+    Instance.new("UICorner", barFill)
+
+    -- Loading Animation Logic
+    local loadingSteps = {
+        "Loading Kill Aura System...",
+        "Bypassing Anticheat...",
+        "Hooking Remotes...",
+        "Setting up Movement Modules...",
+        "Injecting Fishing Script...",
+        "Loading UI Theme...",
+        "Ready!"
+    }
+
+    task.spawn(function()
+        for i, status in ipairs(loadingSteps) do
+            statusLabel.Text = status
+            local targetSize = UDim2.new(i / #loadingSteps, 0, 1, 0)
+            TweenService:Create(barFill, TweenInfo.new(0.45, Enum.EasingStyle.Quart), {Size = targetSize}):Play()
+            task.wait(0.4)
+        end
+        task.wait(0.3)
+        loader:Destroy()
+    end)
+
+    -- Wait for loader to finish before showing main GUI
+    repeat task.wait() until not sg:FindFirstChild("Frame") or not loader.Parent
+
+    -- [[ MAIN GUI ]] --
+    local main = Instance.new("Frame", sg)
+    main.Size = UDim2.new(0, 720, 0, 500)
+    main.Position = UDim2.new(0.5, -360, 0.5, -250)
+    main.BackgroundColor3 = THEME.Bg
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+    local mainStroke = Instance.new("UIStroke", main)
+    mainStroke.Color = THEME.Border
+    mainStroke.Thickness = 2
+
+    -- [[ RESTORE BUTTON ]] --
+    local openBtn = Instance.new("TextButton", sg)
+    openBtn.Size = UDim2.new(0, 140, 0, 35)
+    openBtn.Position = UDim2.new(0.5, -70, 0, -50) -- Hidden initially
+    openBtn.BackgroundColor3 = THEME.RestoreBtn
+    openBtn.Text = "RESTORE MENU"
+    openBtn.Font = Enum.Font.GothamBold
+    openBtn.TextColor3 = Color3.new(1, 1, 1)
+    openBtn.TextSize = 11
+    Instance.new("UICorner", openBtn)
+    
+    local openStroke = Instance.new("UIStroke", openBtn)
+    openStroke.Color = THEME.Accent
+    openStroke.Thickness = 1.5
+    openStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- Restore Hover Effects
+    openBtn.MouseEnter:Connect(function()
+        TweenService:Create(openStroke, TweenInfo.new(0.3), {Thickness = 3, Color = Color3.new(1,1,1)}):Play()
+    end)
+    openBtn.MouseLeave:Connect(function()
+        TweenService:Create(openStroke, TweenInfo.new(0.3), {Thickness = 1.5, Color = THEME.Accent}):Play()
+    end)
+
+    local function toggleMenu(visible)
+        main.Visible = visible
+        TweenService:Create(openBtn, TweenInfo.new(0.5, Enum.EasingStyle.Quart), {Position = visible and UDim2.new(0.5, -70, 0, -50) or UDim2.new(0.5, -70, 0, 30)}):Play()
+    end
+    openBtn.MouseButton1Click:Connect(function() toggleMenu(true) end)
+
+    -- Top Bar
+    local top = Instance.new("Frame", main)
+    top.Size = UDim2.new(1, 0, 0, 50)
+    top.BackgroundColor3 = THEME.Side
+    Instance.new("UICorner", top)
+
+    local title = Instance.new("TextLabel", top)
+    title.Size = UDim2.new(0.5, 0, 1, 0)
+    title.Position = UDim2.new(0, 20, 0, 0)
+    title.Text = "MONKK'S Cheats | V3.14"
+    title.Font = Enum.Font.GothamBold
+    title.TextColor3 = THEME.Text
+    title.TextSize = 13
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.BackgroundTransparency = 1
+
+    local close = Instance.new("TextButton", top)
+    close.Size = UDim2.new(0, 40, 0, 40)
+    close.Position = UDim2.new(1, -45, 0, 5)
+    close.Text = "×"
+    close.TextColor3 = Color3.fromRGB(255, 80, 80)
+    close.TextSize = 26
+    close.BackgroundTransparency = 1
+    close.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+    local min = Instance.new("TextButton", top)
+    min.Size = UDim2.new(0, 40, 0, 40)
+    min.Position = UDim2.new(1, -85, 0, 5)
+    min.Text = "-"
+    min.TextColor3 = THEME.Text
+    min.TextSize = 26
+    min.BackgroundTransparency = 1
+    min.MouseButton1Click:Connect(function() toggleMenu(false) end)
+
+    -- Sidebar
+    local side = Instance.new("Frame", main)
+    side.Size = UDim2.new(0, 180, 1, -50)
+    side.Position = UDim2.new(0, 0, 0, 50)
+    side.BackgroundColor3 = THEME.Side
+    Instance.new("UIListLayout", side).Padding = UDim.new(0, 2)
+    Instance.new("UIPadding", side).PaddingTop = UDim.new(0, 10)
+
+    local content = Instance.new("Frame", main)
+    content.Size = UDim2.new(1, -180, 1, -50)
+    content.Position = UDim2.new(0, 180, 0, 50)
+    content.BackgroundTransparency = 1
+
+    local activeTab = nil
+    local function createTab(name)
+        local b = Instance.new("TextButton", side)
+        b.Size = UDim2.new(1, 0, 0, 45)
+        b.BackgroundTransparency = 1
+        b.Text = "      " .. name
+        b.Font = Enum.Font.GothamBold
+        b.TextColor3 = THEME.TextDim
+        b.TextSize = 11
+        b.TextXAlignment = Enum.TextXAlignment.Left
+
+        local indicator = Instance.new("Frame", b)
+        indicator.Size = UDim2.new(0, 3, 0, 0)
+        indicator.Position = UDim2.new(0, 0, 0.5, 0)
+        indicator.BackgroundColor3 = THEME.Accent
+        indicator.BorderSizePixel = 0
+
+        local cg = Instance.new("CanvasGroup", content)
+        cg.Size = UDim2.new(1, 0, 1, 0)
+        cg.Visible = false
+        cg.GroupTransparency = 1
+        cg.BackgroundTransparency = 1
+
+        local sc = Instance.new("ScrollingFrame", cg)
+        sc.Size = UDim2.new(1, 0, 1, 0)
+        sc.BackgroundTransparency = 1
+        sc.ScrollBarThickness = 1
+        Instance.new("UIListLayout", sc).Padding = UDim.new(0, 10)
+        Instance.new("UIPadding", sc).PaddingTop = UDim.new(0, 15)
+        Instance.new("UIPadding", sc).PaddingLeft = UDim.new(0, 20)
+        Instance.new("UIPadding", sc).PaddingRight = UDim.new(0, 20)
+
+        b.MouseButton1Click:Connect(function()
+            if activeTab then
+                TweenService:Create(activeTab.cg, TweenInfo.new(0.2), {GroupTransparency = 1}):Play()
+                TweenService:Create(activeTab.ind, TweenInfo.new(0.2), {Size = UDim2.new(0,3,0,0), Position = UDim2.new(0,0,0.5,0)}):Play()
+                activeTab.b.TextColor3 = THEME.TextDim
+                task.wait(0.2)
+                activeTab.cg.Visible = false
+            end
+            activeTab = {cg = cg, b = b, ind = indicator}
+            cg.Visible = true
+            b.TextColor3 = THEME.Text
+            TweenService:Create(cg, TweenInfo.new(0.3), {GroupTransparency = 0}):Play()
+            TweenService:Create(indicator, TweenInfo.new(0.3), {Size = UDim2.new(0,3,0,24), Position = UDim2.new(0,0,0.5,-12)}):Play()
+        end)
+        return sc
+    end
+
+    -- Switch Component
+    local function addToggle(p, text, tbl, key)
+        local f = Instance.new("Frame", p)
+        f.Size = UDim2.new(1, 0, 0, 50)
+        f.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+        Instance.new("UICorner", f)
+        
+        local l = Instance.new("TextLabel", f)
+        l.Size = UDim2.new(0.6, 0, 1, 0)
+        l.Position = UDim2.new(0, 15, 0, 0)
+        l.Text = text:upper()
+        l.TextColor3 = THEME.Text
+        l.Font = Enum.Font.GothamBold
+        l.TextSize = 10
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.BackgroundTransparency = 1
+
+        local track = Instance.new("Frame", f)
+        track.Size = UDim2.new(0, 40, 0, 20)
+        track.Position = UDim2.new(1, -55, 0.5, -10)
+        track.BackgroundColor3 = tbl[key] and THEME.SwitchOn or THEME.SwitchOff
+        Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+        local knob = Instance.new("Frame", track)
+        knob.Size = UDim2.new(0, 14, 0, 14)
+        knob.Position = tbl[key] and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+        knob.BackgroundColor3 = Color3.new(1,1,1)
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+        local btn = Instance.new("TextButton", track)
+        btn.Size = UDim2.new(1, 0, 1, 0)
+        btn.BackgroundTransparency = 1
+        btn.Text = ""
+
+        btn.MouseButton1Click:Connect(function()
+            tbl[key] = not tbl[key]
+            TweenService:Create(track, TweenInfo.new(0.2), {BackgroundColor3 = tbl[key] and THEME.SwitchOn or THEME.SwitchOff}):Play()
+            TweenService:Create(knob, TweenInfo.new(0.2), {Position = tbl[key] and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)}):Play()
+        end)
+    end
+
+    local function addInput(p, text, tbl, key)
+        local f = Instance.new("Frame", p)
+        f.Size = UDim2.new(1, 0, 0, 50)
+        f.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+        Instance.new("UICorner", f)
+
+        local l = Instance.new("TextLabel", f)
+        l.Size = UDim2.new(0.6, 0, 1, 0)
+        l.Position = UDim2.new(0, 15, 0, 0)
+        l.Text = text:upper()
+        l.TextColor3 = THEME.TextDim
+        l.Font = Enum.Font.GothamBold
+        l.TextSize = 9
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.BackgroundTransparency = 1
+
+        local i = Instance.new("TextBox", f)
+        i.Size = UDim2.new(0, 70, 0, 28)
+        i.Position = UDim2.new(1, -85, 0.5, -14)
+        i.BackgroundColor3 = THEME.Side
+        i.Text = tostring(tbl[key])
+        i.TextColor3 = THEME.Accent
+        i.Font = Enum.Font.GothamBold
+        i.TextSize = 12
+        Instance.new("UICorner", i)
+        
+        i.FocusLost:Connect(function() 
+            local val = tonumber(i.Text)
+            if val then tbl[key] = val end
+            i.Text = tostring(tbl[key])
+        end)
+    end
+
+    -- Setup Tabs
+    local combatP = createTab("COMBAT")
+    local fishingP = createTab("FISHING")
+    local moveP = createTab("MOVEMENT")
+    local visP = createTab("VISUALS")
+
+    addToggle(combatP, "Enable Kill Aura", flags.combat, "enabled")
+    addInput(combatP, "Range", flags.combat, "range")
+
+    addToggle(fishingP, "Auto-Fishing", flags.fishing, "enabled")
+    addInput(fishingP, "Catch Delay", flags.fishing, "delay")
+
+    addToggle(moveP, "SpeedHack", flags.movement, "speedEnabled")
+    addInput(moveP, "Speed Value", flags.movement, "speed")
+    addToggle(moveP, "Flight", flags.movement, "fly")
+
+    addToggle(visP, "ESP", flags.visuals, "esp")
+
+    -- Draggable
+    local d, dS, sP
+    top.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then d = true dS = i.Position sP = main.Position end end)
+    UserInputService.InputChanged:Connect(function(i) if d and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local del = i.Position - dS
+        main.Position = UDim2.new(sP.X.Scale, sP.X.Offset + del.X, sP.Y.Scale, sP.Y.Offset + del.Y)
+    end end)
+    top.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then d = false end end)
+
+    uiCreated = true
+end
+
+-- [[ OPTIMIZED LOOPS ]] --
+
+task.spawn(function()
+    while true do
+        task.wait(math.max(0.1, flags.fishing.delay))
+        if flags.fishing.enabled then
+            local rems = getRemotes()
+            if rems and rems.fish then rems.fish:FireServer(Vector3.zero, -1) end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if flags.combat.enabled and player.Character then
+            local rems = getRemotes()
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if rems and rems.sw and rems.hit and hrp then
+                for _, e in pairs(Workspace:GetChildren()) do
+                    if e:IsA("Model") and e ~= player.Character and e:FindFirstChild("Humanoid") then
+                        local er = e:FindFirstChild("HumanoidRootPart")
+                        if er and (hrp.Position - er.Position).Magnitude <= flags.combat.range then
+                            rems.sw:FireServer()
+                            rems.hit:FireServer(e.Humanoid, 999, {}, 0)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not uiCreated or not player.Character then return end
+    local hum = player.Character:FindFirstChild("Humanoid")
+    if hum and flags.movement.speedEnabled then hum.WalkSpeed = flags.movement.speed end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if flags.visuals.esp then
+            for _, o in pairs(Workspace:GetChildren()) do
+                if o:IsA("Model") and o:FindFirstChild("Humanoid") and o ~= player.Character then
+                    if not espHighlights[o] then
+                        local h = Instance.new("Highlight", o)
+                        h.FillColor = THEME.Accent
+                        espHighlights[o] = h
+                    end
+                end
+            end
+        else
+            for o, h in pairs(espHighlights) do if h then h:Destroy() end end
+            table.clear(espHighlights)
+        end
+    end
+end)
+
+buildUI()
